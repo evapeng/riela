@@ -16,6 +16,7 @@
 // How to load in modules
 const Scene = require('Scene');
 const Reactive = require('Reactive');
+const FaceGestures = require('FaceGestures');
 const FaceTracking = require('FaceTracking');
 const Diagnostics = require('Diagnostics');
 const Textures = require('Textures');
@@ -24,6 +25,8 @@ Diagnostics.log('Console message logged from the script.');
 const Screen = require('./Screen.js');
 const mainCamera = Scene.root.findFirst('Camera');
 const Animation = require('Animation');
+const CameraInfoModule = require('CameraInfo/index.js');
+const Audio = require('Audio');
 
 // import { cameraTransformToFocalDistance } from './Screen.js';
 // Use export keyword to make a symbol available in scripting debug console
@@ -32,15 +35,22 @@ const Animation = require('Animation');
 // Enables async/await in JS [part 1]
 (async function() {
     const tear = await Scene.root.findFirst('tear');
-
+    const camera = await mainCamera;
     const face = FaceTracking.face(0);
     const feature = face.cameraTransform.applyToPoint(face.leftEye.center);
     var myFace = await Scene.root.findFirst('face');
-
+    const audioClip = await Audio.getAudioPlaybackController('audioPlaybackController');
     const worldPosEye = await Screen.cameraTransformToFocalPlane(feature);
     const canvasPosEye = await Screen.focalPlaneToCanvas(worldPosEye);
     const screenSize = await Screen.getFullscreenSize();
-    const SCALE = 1;
+    const speaker = await Scene.root.findFirst('speaker0');
+
+    // Ambient Lighting
+    const [ambientLight, pinkLight, greenLight] = await Promise.all([
+        Scene.root.findFirst('ambientLight0'),
+        Scene.root.findFirst('pink'),
+        Scene.root.findFirst('greem')
+    ]);
 
     // For 2D Canvas World
     // const myFaceTransformation = Reactive.pack3(
@@ -52,45 +62,68 @@ const Animation = require('Animation');
     //==============================================================================
     // Animate the plane's horizontal position continuously
     //==============================================================================
+    // const mouthOpenness = FaceTracking.face(0).mouth.openness;
 
     // Create a set of time driver parameters
     const timeDriverParameters = {
         // The duration of the driver
-        durationMilliseconds: 1500,
+        durationMilliseconds: 3000,
 
         // The number of iterations before the driver stops
-        loopCount: Infinity,
+        loopCount: 1,
 
         // Should the driver 'yoyo' back and forth
-        mirror: true
+        mirror: false,
     };
 
+    // Create a sampler with a quadratic change in and out from -5 to 5
+    const quadraticSampler = Animation.samplers.easeInOutQuad(0.1, .43);
+    const linearSample = Animation.samplers.linear(0.1, 1);
+    /////////////////////////
+    // Interactive example //
+    /////////////////////////
+    // const mouthOpennessDriver = Animation.valueDriver(mouthOpenness, .1, .6);
+    // const scaleAnimation = Animation.animate(mouthOpennessDriver, quadraticSampler);
+    // const scaleAnimationPos = Animation.animate(mouthOpennessDriver, linearSample);
+
+    /////////////////////////
+    // Static example //
+    /////////////////////////
     // Create a time driver using the parameters
     const timeDriver = Animation.timeDriver(timeDriverParameters);
+    const timeDriverLighting = Animation.timeDriver(timeDriverParameters);
+    const scaleAnimation = Animation.animate(timeDriver, quadraticSampler);
+    const scaleAnimationPos = Animation.animate(timeDriver, linearSample);
+    const lightingFade = Animation.animate(timeDriverLighting, linearSample);
 
-    // Create a sampler with a quadratic change in and out from -5 to 5
-    const quadraticSamplerNormalized = Animation.samplers.easeInOutQuad(0, 1);
-    const quadraticSampler = Animation.samplers.easeInOutQuad(0, .6);
-    // const quadraticSamplerFaceX = Animation.samplers.easeInOutQuad(0, worldPosEye.x.neg().pinLastValue());
-    // const quadraticSamplerFaceY = Animation.samplers.easeInOutQuad(0, worldPosEye.y.neg().pinLastValue());
-
-    // Create an animation combining the driver and sampler
-    const translationAnimation = Animation.animate(timeDriver, quadraticSampler);
-    const translationAnimationNormalized = Animation.animate(timeDriver, quadraticSamplerNormalized);
-
-    // Bind the translation animation signal to the x-axis position signal of the plane
-    // For 3D World
     const myFaceTransformation = Reactive.pack3(
-        worldPosEye.x.neg().mul(translationAnimationNormalized),
-        worldPosEye.x.neg().mul(translationAnimationNormalized),
-        translationAnimation
+        worldPosEye.x.neg().mul(scaleAnimationPos),
+        worldPosEye.y.neg().mul(scaleAnimationPos),
+        scaleAnimation
     )
 
     myFace.transform.position = myFaceTransformation
-    tear.transform.position = myFaceTransformation
+    // tear.transform.position = myFaceTransformation
 
-    timeDriver.start();
+    FaceGestures.onShake(face).subscribe(() => {
+        timeDriver.start();
+      });
+    
+    // Bind the light intensity to the intensity of the ambient light
+    var isAudioPlaying = false;
+    timeDriver.onCompleted().subscribe(() => {
+        // Start or stop the audio depending on the state of the boolean
+        audioClip.setPlaying(true);
+        speaker.volume = 1;
+        ambientLight.intensity = lightingFade;
+        pinkLight.intensity = lightingFade;
+        pinkLight.intensity = lightingFade;
 
+        timeDriverLighting.start();
+    })
+
+    ambientLight.intensity = Reactive.smoothStep(scaleAnimationPos.neg().add(1), .2, 1);
+    // speaker.volume = scaleAnimationPos;
 
     // Scale face
     // myFace.transform.scale = Reactive.pack2(SCALE, SCALE);

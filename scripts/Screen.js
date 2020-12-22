@@ -402,3 +402,21 @@ function worldToPixel(worldPosition) {
         return Reactive.point2d(pixelX, pixelY);
     })
 }
+
+/**
+ * Get focal plane width at camera.
+ * @returns {Promise<Point2DSignal>}
+ */
+export async function planeAtCamera() {
+    return mainCamera.then(camera => {
+        const widthTan = camera.focalPlane.width.div(2).div(camera.focalPlane.distance);
+        const heightTan = camera.focalPlane.height.div(2).div(camera.focalPlane.distance);
+
+        const scaled_width = width.mul(screenScale);
+        const scaled_height = height.mul(screenScale);
+
+        const focalPlaneWidthAtObject = camera.focalPlane.distance.mul(widthTan).mul(2);
+        const focalPlaneHeightAtObject = camera.focalPlane.distance.mul(heightTan).mul(2);
+        return Reactive.point2d(focalPlaneWidthAtObject, focalPlaneHeightAtObject);
+    })
+}
