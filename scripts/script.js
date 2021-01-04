@@ -36,24 +36,28 @@ const Audio = require('Audio');
 // Enables async/await in JS [part 1]
 (async function() {
     const tear = await Scene.root.findFirst('tear');
+    const tearLeft = await Scene.root.findFirst('tearL');
     const camera = await mainCamera;
     const face = FaceTracking.face(0);
-    const feature = face.cameraTransform.applyToPoint(face.leftEye.center);
+    const leftEye = face.cameraTransform.applyToPoint(face.leftEye.center);
     const rightEye = face.cameraTransform.applyToPoint(face.rightEye.center);
     var myFace = await Scene.root.findFirst('face');
     const audioController = await Audio.getAudioPlaybackController('audioPlaybackController');
-    const worldPosEye = await Screen.cameraTransformToFocalPlane(feature);
+    const worldPosEye = await Screen.cameraTransformToFocalPlane(leftEye);
+
     const worldPosRightEye = await Screen.cameraTransformToFocalPlane(rightEye);
     const canvasPosRightEye = await Screen.focalPlaneToCanvas(worldPosRightEye);
     const canvasPosEye = await Screen.focalPlaneToCanvas(worldPosEye);
     const screenSize = await Screen.getFullscreenSize();
     const speaker = await Scene.root.findFirst('speaker0');
+    const cube = await Scene.root.findFirst('Cube');
 
     // Ambient Lighting
-    const [ambientLight, pinkLight, greenLight] = await Promise.all([
+    const [ambientLight, pinkLight, greenLight, stars] = await Promise.all([
         Scene.root.findFirst('ambientLight0'),
         Scene.root.findFirst('pink'),
-        Scene.root.findFirst('greem')
+        Scene.root.findFirst('greem'),
+        Scene.root.findFirst('emitterStars')
     ]);
 
     // For 2D Canvas World
@@ -93,6 +97,7 @@ const Audio = require('Audio');
 
     // Create a sampler with a quadratic change in and out from -5 to 5
     const quadraticSampler = Animation.samplers.easeInOutQuad(0.1, .53);
+    const cubeSampler = Animation.samplers.easeInOutQuad(-2.0, -1.3628);
     const linearSample = Animation.samplers.linear(0, 1);
     /////////////////////////
     // Interactive example //
@@ -109,6 +114,7 @@ const Audio = require('Audio');
     const audioDriver = Animation.timeDriver(audioDriverParameters);
     const timeDriverLighting = Animation.timeDriver(timeDriverParameters);
     const scaleAnimation = Animation.animate(timeDriver, quadraticSampler);
+    const cubeAnimation = Animation.animate(timeDriver, cubeSampler);
     const posAnimation = Animation.animate(timeDriver, linearSample);
     const audioFade = Animation.animate(audioDriver, linearSample);
     const lightingFade = Animation.animate(timeDriver, linearSample);
@@ -122,10 +128,13 @@ const Audio = require('Audio');
     )
     
     const myTearTransformation = myFaceTransformation.add(worldPosRightEye).add(Reactive.pack3(0,0,0.03));
+    const myTearLeftTransformation = myFaceTransformation.add(worldPosEye).add(Reactive.pack3(0,0,0.03));
 
     myFace.transform.position = myFaceTransformation
     tear.transform.position = myTearTransformation
+    tearLeft.transform.position = myTearLeftTransformation;
     tear.transform.rotation = face.cameraTransform.rotation;
+    cube.transform.z = cubeAnimation;
     
     speaker.volume = audioFade;
     FaceGestures.onShake(face).subscribe(() => {
@@ -144,6 +153,7 @@ const Audio = require('Audio');
         ambientLight.intensity = lightingFade;
         pinkLight.intensity = lightingFade;
         pinkLight.intensity = lightingFade;
+        stars.hidden = false;
         ambientLight.color = Reactive.RGBA(1, .9, .55, lightingFade);
 
         timeDriverLighting.start();
